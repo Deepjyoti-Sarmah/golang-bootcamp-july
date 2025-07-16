@@ -5,7 +5,6 @@ import (
 	"golang-bootcamp-July/internal/domain"
 	"golang-bootcamp-July/internal/service"
 	"net/http"
-	"strings"
 )
 
 type BookingHandler struct {
@@ -25,25 +24,22 @@ func (h *BookingHandler) BookingTicket(w http.ResponseWriter, r *http.Request) {
 
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		h.sendErrorResponse(w, http.StatusBadRequest, "Invalid request body")
+		return
 	}
 
 	result, err := h.bookingService.BookTicketService(r.Context(), req.UserID)
 	if err != nil {
-		h.sendErrorResponse(w, http.StatusInternalServerError, err.Error())
+		stautsCode := http.StatusInternalServerError
+		if err == domain.ErrNoTicketsAvailable {
+			stautsCode = http.StatusConflict
+		} else if err == domain.ErrInvalidUserID {
+			stautsCode = http.StatusBadRequest
+		}
+		h.sendErrorResponse(w, stautsCode, err.Error())
+		return
 	}
 
-	// check for the result and commit
-	if !result.Success {
-		statusCode := http.StatusInternalServerError
-		if strings.Contains(result.Error, "no tickets available") {
-			statusCode = http.StatusConflict
-		} else if strings.Contains(result.Error, "invalid user ID") {
-			statusCode = http.StatusBadRequest
-		}
-		h.sendErrorResponse(w, statusCode, result.Error)
-	} else {
-		h.sendSuccessResponse(w, result)
-	}
+	h.sendSuccessResponse(w, result)
 }
 
 // GET /api/v1/stats
@@ -51,6 +47,7 @@ func (h *BookingHandler) GetStats(w http.ResponseWriter, r *http.Request) {
 	stats, err := h.bookingService.GetBookingStatsService(r.Context())
 	if err != nil {
 		h.sendErrorResponse(w, http.StatusInternalServerError, err.Error())
+		return
 	}
 
 	h.sendSuccessResponse(w, stats)
@@ -66,15 +63,31 @@ func (h *BookingHandler) GetUserBookings(w http.ResponseWriter, r *http.Request)
 
 	bookings, err := h.bookingService.BookTicketService(r.Context(), userID)
 	if err != nil {
-		h.sendErrorResponse(w, http.StatusBadRequest, err.Error())
+		h.sendErrorResponse(w, http.StatusInternalServerError, err.Error())
 		return
 	}
 
 	h.sendSuccessResponse(w, bookings)
 }
 
-func (h *BookingHandler) HeathCheck(w http.ResponseWriter, r *http.Request) {}
+func (h *BookingHandler) HeathCheck(w http.ResponseWriter, r *http.Request) {
+	h.sendSuccessResponse(w, map[string]string{"status": "healthy"})
+}
 
-func (h *BookingHandler) sendSuccessResponse(w http.ResponseWriter, data interface{}) {}
+func (h *BookingHandler) sendSuccessResponse(w http.ResponseWriter, data interface{}) {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(http.StatusOK)
+	json.NewEncoder(w).Encode(map[string]interface{}{
+		"success": true,
+		"data":    data,
+	})
+}
 
-func (h *BookingHandler) sendErrorResponse(w http.ResponseWriter, statusCode int, message string) {}
+func (h *BookingHandler) sendErrorResponse(w http.ResponseWriter, statusCode int, message string) {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(statusCode)
+	json.NewEncoder(w).Encode(map[string]interface{}{
+		"success": false,
+		"data":    message,
+	})
+}
