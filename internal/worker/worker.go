@@ -37,7 +37,16 @@ func (w *Worker) Start(ctx context.Context) {
 
 			result, err := w.boookingService.BookTicketService(ctx, userID)
 			if err != nil {
-				return
+				select {
+				case w.results <- domain.BookingResult{
+					UserID:  userID,
+					Success: false,
+					Error:   err.Error(),
+				}:
+				case <-ctx.Done():
+					return
+				}
+				continue
 			}
 
 			select {
