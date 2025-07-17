@@ -5,7 +5,6 @@ import (
 	"fmt"
 	"golang-bootcamp-July/internal/domain"
 	"golang-bootcamp-July/internal/repository"
-	"math/rand"
 	"sync"
 	"time"
 )
@@ -25,30 +24,18 @@ func NewBookingService(bookingRepo repository.BookingRepository, ticketRepo repo
 
 func (s *BookingService) BookTicketService(ctx context.Context, userID string) (*domain.BookingResult, error) {
 	if userID == "" {
-		return &domain.BookingResult{
-			UserID:  userID,
-			Success: false,
-			Error:   domain.ErrInvalidUserID.Error(),
-		}, domain.ErrInvalidUserID
+		return nil, domain.ErrInvalidUserID
 	}
 
-	time.Sleep(time.Microsecond * time.Duration(rand.Intn(100)))
+	// time.Sleep(time.Microsecond * time.Duration(rand.Intn(100)))
 
 	availableTickets, err := s.ticketRepo.GetAvailableTickets(ctx)
 	if err != nil {
-		return &domain.BookingResult{
-			UserID:  userID,
-			Success: false,
-			Error:   err.Error(),
-		}, err
+		return nil, fmt.Errorf("failed to get available tickets: %w ", err)
 	}
 
 	if availableTickets <= 0 {
-		return &domain.BookingResult{
-			UserID:  userID,
-			Success: false,
-			Error:   domain.ErrNoTicketsAvailable.Error(),
-		}, domain.ErrNoTicketsAvailable
+		return nil, domain.ErrNoTicketsAvailable
 	}
 
 	s.mu.Lock()
@@ -56,19 +43,16 @@ func (s *BookingService) BookTicketService(ctx context.Context, userID string) (
 
 	availableTickets, err = s.ticketRepo.GetAvailableTickets(ctx)
 	if err != nil {
-		return &domain.BookingResult{
-			UserID:  userID,
-			Success: false,
-			Error:   err.Error(),
-		}, err
+		return nil, fmt.Errorf("failed to get available tickets: %w ", err)
 	}
 
 	if availableTickets <= 0 {
-		return &domain.BookingResult{
-			UserID:  userID,
-			Success: false,
-			Error:   domain.ErrNoTicketsAvailable.Error(),
-		}, domain.ErrNoTicketsAvailable
+		return nil, domain.ErrNoTicketsAvailable
+	}
+
+	// Decrement tickets first
+	if err := s.ticketRepo.DecrementAvailableTickets(ctx, 1); err != nil {
+		return nil, fmt.Errorf("failed to decrement tickets: %w", err)
 	}
 
 	// Create booking
@@ -80,23 +64,29 @@ func (s *BookingService) BookTicketService(ctx context.Context, userID string) (
 	}
 
 	// Save booking
-	if err := s.bookingRepo.CreateBooking(ctx, booking); err != nil {
-		return &domain.BookingResult{
-			UserID:  userID,
-			Success: false,
-			Error:   err.Error(),
-		}, err
-	}
+	// if err := s.bookingRepo.CreateBooking(ctx, booking); err != nil {
+	// 	return &domain.BookingResult{
+	// 		UserID:  userID,
+	// 		Success: false,
+	// 		Error:   err.Error(),
+	// 	}, err
+	// }
 
-	// Decrement available tickets
-	if err := s.ticketRepo.DecrementAvailableTickets(ctx, 1); err != nil {
-		// Rollback booking if ticket decrement fails
-		_ = s.bookingRepo.DeleteBooking(ctx, bookingID)
-		return &domain.BookingResult{
-			UserID:  userID,
-			Success: false,
-			Error:   err.Error(),
-		}, err
+	// // Decrement available tickets
+	// if err := s.ticketRepo.DecrementAvailableTickets(ctx, 1); err != nil {
+	// 	// Rollback booking if ticket decrement fails
+	// 	_ = s.bookingRepo.DeleteBooking(ctx, bookingID)
+	// 	return &domain.BookingResult{
+	// 		UserID:  userID,
+	// 		Success: false,
+	// 		Error:   err.Error(),
+	// 	}, err
+	// }
+
+	// Save booking
+	if err := s.bookingRepo.CreateBooking(ctx, booking); err != nil {
+		_ = s.ticketRepo.DecrementAvailableTickets(ctx, -1)
+		return nil, fmt.Errorf("failed to create boooking: %w", err)
 	}
 
 	return &domain.BookingResult{
@@ -109,12 +99,12 @@ func (s *BookingService) BookTicketService(ctx context.Context, userID string) (
 func (s *BookingService) GetBookingStatsService(ctx context.Context) (*domain.BookingStats, error) {
 	totalTicket, err := s.ticketRepo.GetTotalTickets(ctx)
 	if err != nil {
-		return &domain.BookingStats{}, err
+		return nil, fmt.Errorf("failed to get total tickets: %w", err)
 	}
 
 	availableTickets, err := s.ticketRepo.GetAvailableTickets(ctx)
 	if err != nil {
-		return &domain.BookingStats{}, err
+		return nil, fmt.Errorf("failed to get available tickets: %w", err)
 	}
 
 	bookedTickets := totalTicket - availableTickets
@@ -127,5 +117,14 @@ func (s *BookingService) GetBookingStatsService(ctx context.Context) (*domain.Bo
 }
 
 func (s *BookingService) GetUserBookingsService(ctx context.Context, userID string) ([]*domain.Booking, error) {
-	return s.bookingRepo.GetBookingsByUserID(ctx, userID)
+	if userID == "" {
+		return nil, domain.ErrInvalidUserID
+	}
+
+	bookings, err := s.bookingRepo.GetBookingsByUserID(ctx, userID)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get user bookings: %w", err)
+	}
+
+	return bookings, nil
 }
