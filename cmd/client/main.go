@@ -55,10 +55,10 @@ func main() {
 			atomic.AddInt32(&processedRequests, 1)
 			processed := atomic.LoadInt32(&processedRequests)
 
-			if result.Success {
-				atomic.AddInt32(&successfulBookings, 1)
-			} else {
+			if !result.Success {
 				atomic.AddInt32(&failedBookings, 1)
+			} else {
+				atomic.AddInt32(&successfulBookings, 1)
 			}
 
 			if processed%5000 == 0 {
