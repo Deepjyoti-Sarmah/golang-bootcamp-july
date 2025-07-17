@@ -46,25 +46,29 @@ func main() {
 		processedRequests  int32
 	)
 
-	resultDone := make(chan bool)
+	var resultWg sync.WaitGroup
+	resultWg.Add(1)
 
 	go func() {
+		defer resultWg.Done()
 		for result := range workerPool.Results() {
 			atomic.AddInt32(&processedRequests, 1)
+			processed := atomic.LoadInt32(&processedRequests)
 
 			if result.Success {
 				atomic.AddInt32(&successfulBookings, 1)
-				if processedRequests%5000 == 0 {
-					log.Printf("✅ Progress: %d/%d requests processed, %d tickets booked",
-						atomic.LoadInt32(&processedRequests),
-						totalRequests,
-						atomic.LoadInt32(&successfulBookings),
-					)
-				} else {
-					atomic.AddInt32(&failedBookings, 1)
-				}
+			} else {
+				atomic.AddInt32(&failedBookings, 1)
 			}
-			resultDone <- true
+
+			if processed%5000 == 0 {
+				log.Printf("✅ Progress: %d/%d requests processed, %d successful, %d failed",
+					processed,
+					totalRequests,
+					atomic.LoadInt32(&successfulBookings),
+					atomic.LoadInt32(&failedBookings),
+				)
+			}
 		}
 	}()
 
@@ -95,7 +99,7 @@ func main() {
 		workerPool.Stop()
 	}()
 
-	<-resultDone
+	resultWg.Wait()
 
 	duration := time.Since(startTime)
 	stats, _ := bookingService.GetBookingStatsService(ctx)

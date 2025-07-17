@@ -50,11 +50,6 @@ func (s *BookingService) BookTicketService(ctx context.Context, userID string) (
 		return nil, domain.ErrNoTicketsAvailable
 	}
 
-	// Decrement tickets first
-	if err := s.ticketRepo.DecrementAvailableTickets(ctx, 1); err != nil {
-		return nil, fmt.Errorf("failed to decrement tickets: %w", err)
-	}
-
 	// Create booking
 	bookingID := fmt.Sprintf("BOOK-%s-%d", userID, time.Now().UnixNano())
 	booking := &domain.Booking{
@@ -64,29 +59,15 @@ func (s *BookingService) BookTicketService(ctx context.Context, userID string) (
 	}
 
 	// Save booking
-	// if err := s.bookingRepo.CreateBooking(ctx, booking); err != nil {
-	// 	return &domain.BookingResult{
-	// 		UserID:  userID,
-	// 		Success: false,
-	// 		Error:   err.Error(),
-	// 	}, err
-	// }
-
-	// // Decrement available tickets
-	// if err := s.ticketRepo.DecrementAvailableTickets(ctx, 1); err != nil {
-	// 	// Rollback booking if ticket decrement fails
-	// 	_ = s.bookingRepo.DeleteBooking(ctx, bookingID)
-	// 	return &domain.BookingResult{
-	// 		UserID:  userID,
-	// 		Success: false,
-	// 		Error:   err.Error(),
-	// 	}, err
-	// }
-
-	// Save booking
 	if err := s.bookingRepo.CreateBooking(ctx, booking); err != nil {
-		_ = s.ticketRepo.DecrementAvailableTickets(ctx, -1)
 		return nil, fmt.Errorf("failed to create boooking: %w", err)
+	}
+
+	// Decrement available tickets
+	if err := s.ticketRepo.DecrementAvailableTickets(ctx, 1); err != nil {
+		// Rollback
+		_ = s.bookingRepo.DeleteBooking(ctx, bookingID)
+		return nil, fmt.Errorf("failed to decrement tickets: %w", err)
 	}
 
 	return &domain.BookingResult{
