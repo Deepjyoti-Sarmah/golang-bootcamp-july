@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"golang-bootcamp-July/internal/domain"
 	"golang-bootcamp-July/internal/repository"
+	"math/rand"
 	"sync"
 	"time"
 )
@@ -27,7 +28,8 @@ func (s *BookingService) BookTicketService(ctx context.Context, userID string) (
 		return nil, domain.ErrInvalidUserID
 	}
 
-	// time.Sleep(time.Microsecond * time.Duration(rand.Intn(100)))
+	// simulating network delay
+	time.Sleep(time.Microsecond * time.Duration(rand.Intn(1000)))
 
 	availableTickets, err := s.ticketRepo.GetAvailableTickets(ctx)
 	if err != nil {
